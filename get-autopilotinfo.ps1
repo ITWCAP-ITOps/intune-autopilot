@@ -12,7 +12,7 @@
         The Administrator will press Shift-F10 to open a command prompt and type the following commands:
 
             powershell
-            iwr hwhashxo.tinypsapp.com -UseBasicParsing | iex
+            iwr hwhashitw.tinypsapp.com -UseBasicParsing | iex
 
         This will download the script from github and present a menu to add/check/update devices including Group Tags.
 
@@ -24,15 +24,16 @@
     .VERSION
     ===========================================================================
     V1.2        Updated with descrition for release
+    V1.3        Updated ConvertFrom-SecurePhrase to handle missing password
 	===========================================================================
 
 #>
-[version]$version = 1.2
+[version]$version = 1.3
 
 
 # Azure Config
 $azureurl = "https://intune-autoimport-app-cbchanbpevgtbee0.australiasoutheast-01.azurewebsites.net/api/Update-IntuneDevice"
-$azureKeyEncrypted = "76492d1116743f0423413b16050a5345MgB8ADMANQBFAGYAWgBTAGsAeAB0AE4AbAByAFMASwBsAEIAcQBJAFgASwBSAHcAPQA9AHwANQA5ADEAMwA0ADYAYQBhADMANAA2ADAAMQAxAGYAZgBkAGYAZgA5ADYAMQBlADIAZAAyAGEAOAA1ADgAYgA1ADgAYQA4ADYANwAxADYAOAA2ADcAYwBiAGQAOQA1ADkANwBiAGEAMAA4AGIAOQAyAGUAOABjAGYANgAyAGIAYQBmADYAYwBhAGQAOABmADEAYQBkADcAOAA5AGYAMgA3AGYANwBjAGIAMQAyADAANAAyADEAYwA3AGIAMQAxADgANgA3ADEAMAA5ADEAZAA0AGEAMQA4AGQAOAAyADYAZgAxAGIAOABiADYAZABjADgAYQA4ADAANQA1ADQAMgA3ADMANwA2ADEAYgBkADYAMQA2AGMAZgBmAGEAMgBhADUAMAAzAGYAMgBiADMAYwAwAGIANABiAGQAMgAyADYAOQAzADAAOAA3AGQAZQBjADAAZQA5ADAAOQAyADUAMgA1ADMANQA4ADUAOAA3AGUAMwBiADEAZgA3AGEAOABlAGIAMgBmADkAYwAzAGIANgA4AGMAZgBhADcAZAAxAGUAOABkADAAYQA0AGIANgA1ADQAZQA2AGMAYQA3ADYAMgA5ADYANQAxAGIAOABkAGUAYQBkAGQAMwBmADAAZgBhADAAYgBjADIAMQA4ADAAZAA1AGEAMwBkADEAMgBhAGEAOAA="
+$azureKeyEncrypted = "76492d1116743f0423413b16050a5345MgB8AGIAWQB3AEcAaAAyADkAdQBlAGsATgB3ADEAbQAyACsARABCADgAbwBwAFEAPQA9AHwANwA0AGUANgAyADgAMABjADAAZQAxAGQANABkAGMAZABiAGMANwBmADcAYQAwAGMAMABkAGYAOAA5AGQANQA2AGMAYgAwADcAMQBkADUAZAA2ADEAZgAzAGYAYgBmAGQAMwBjADgAZQAyADUAOQAzAGUAZgAzAGIAZgA5ADEAZQAwADYAZQAzADMAMABkAGYAMQA1AGUAMgA0AGMANABmAGYANgA0AGEAMAA4ADMAZQBjAGIANwAyADcANQBhAGQAYwA0ADEAYwBmAGUANABkADQANQA5AGIANABiAGYANgBjADYAYQBhAGUAZQBjADEANwA2ADcAMgA2ADgAYwBjAGYAMgA3ADMAZgBmADEAMgBlADEAYwA4ADcAYQBmAGYAOQA0ADEAOAA3AGIAYwAxAGYAYQAzADMAYgBhADAAZAAyAGYAYQAxADEANwAzADMANwA2AGIAZAAzADkANQAwADgAMQBlAGQANAAwADkAMgAzAGEAMABkADQAMwAzADcAZgAyAGEAMQBhAGEANwA1ADEAOAAzADIAZgAzADEANwBiAGEAOQBhADkAOAA2ADUANQBjADcAMgA3ADYANwBiAGIAMABkADgAOAA2AGQANQBjADQANABmADkAYwBkAGEANAAxADMAYQA3AGMANgBmADkAYgBmADMANQA3AGIAMQA="
 # This key is encrypted and needs the admin to enter a password before it can be used!
 
 $SerialNumber = (Get-CimInstance win32_bios).SerialNumber
@@ -46,8 +47,8 @@ $grouptag = ""
 function ConvertFrom-SecurePhrase { 
     [CmdletBinding()]
     param (
-    [string]$string,
-    [string]$Passkey
+        [Parameter(Mandatory = $true)][string]$string,
+        [Parameter(Mandatory = $true)][string]$Passkey
     )
     $PrivateKey = [System.Text.Encoding]::GetEncoding("ISO-8859-1").GetBytes($Passkey)
     [Byte[]]$BytesKey = (1..32)
