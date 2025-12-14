@@ -28,6 +28,13 @@
 	===========================================================================
 
 #>
+[CmdletBinding()]
+param (
+    [Parameter(Mandatory = $false)][string]$action,
+    [Parameter(Mandatory = $false)][string]$serialnumber,
+    [Parameter(Mandatory = $false)][string]$Manufacturer
+)
+
 [version]$version = 1.3
 
 
@@ -39,7 +46,7 @@ $azureKeyEncrypted = "76492d1116743f0423413b16050a5345MgB8AGIAWQB3AEcAaAAyADkAdQ
 $SerialNumber = (Get-CimInstance win32_bios).SerialNumber
 $Manufacturer = (Get-CimInstance Win32_ComputerSystem).Manufacturer  #dont use bios.Manufacturer its wrong
 $Model          = (Get-CimInstance Win32_ComputerSystem).Model
-$IntuneDeviceID = try {(Get-ChildItem Cert:\LocalMachine\My | Where-Object {$_.Issuer -match "MS-Organization-Accesss"} | Select-Object -ExpandProperty Subject).tolower().TrimStart("cn=")} catch {$null}
+$IntuneDeviceID = try {(Get-ChildItem Cert:\LocalMachine\My | Where-Object {$_.Issuer -match "MS-Organization-Access"} | Select-Object -ExpandProperty Subject).tolower().TrimStart("cn=")} catch {$null}
 $IntuneDeviceHWhash = $((Get-CimInstance -Namespace root/cimv2/mdm/dmmap -Class MDM_DevDetail_Ext01 -Filter "InstanceID='Ext' AND ParentID='./DevDetail'")).DeviceHardwareData
 $grouptag = ""
 
@@ -61,44 +68,65 @@ function ConvertFrom-SecurePhrase {
         $i++
     }
     $PrivateKey = $BytesKey
-    $UnSecurePhrase = [System.Net.NetworkCredential]::new("", $($string | ConvertTo-SecureString -key $PrivateKey)).Password
+    $UnSecurePhrase = [System.Net.NetworkCredential]::new("", $($string | ConvertTo-SecureString -key $PrivateKey -ErrorAction SilentlyContinue)).Password
+
+    write-host $UnSecurePhrase
+
+    if ([string]::IsNullOrEmpty($UnSecurePhrase)) {
+        throw {"Decryption Failed!"}
+    }
     return $UnSecurePhrase
 }
 
-write-host " "
-write-host "Windows Autopilot Import / Check Tool $($version)" -ForegroundColor Green
-write-host ""
-write-host "Device Info: " -ForegroundColor Yellow
-write-host " "
-write-host "    Machine Manufacturer:   " -NoNewline -ForegroundColor Yellow
-write-host "$Manufacturer"
-write-host "    Machine Model:          " -NoNewline -ForegroundColor Yellow
-write-host "$model"
-write-host "    Machine SerialNumber:   " -NoNewline -ForegroundColor Yellow
-write-host "$SerialNumber"
-write-host "    Intune DeviceID:        " -NoNewline -ForegroundColor Yellow
-write-host "$IntuneDeviceID"
-
-write-host " "
-write-host "1." -ForegroundColor Yellow -NoNewline
-write-host " Add Device to AutoPilot" 
-write-host "2." -ForegroundColor Yellow -NoNewline
-write-host " Check Device in Autopilot"
-write-host "3." -ForegroundColor Yellow -NoNewline
-write-host " Update Group Tag"
-write-host "4." -ForegroundColor Yellow -NoNewline
-write-host " Exit"
-$action = read-host -Prompt "Choose Action (1 - 4)"
-
-if ($global:EncryptionKey -ne $true -and $action -lt 4) {
-    $password = read-host -prompt "Password Phrase to Decrypt Script Keys" -AsSecureString
-    $password = [System.Net.NetworkCredential]::new("", $Password).Password
-    $azurekey = ConvertFrom-SecurePhrase -string $azureKeyEncrypted -Passkey $password
-    $global:EncryptionKey = $true
+function get-azurekey {
+    if ($null -eq $Global:azurekey) {
+        $password = read-host -prompt "Password Phrase to Decrypt Script Keys" -AsSecureString
+        if ([string]::IsNullOrEmpty($password) -eq $false) {
+            $password = [System.Net.NetworkCredential]::new("", $Password).Password
+            $Global:azurekey = ConvertFrom-SecurePhrase -string $azureKeyEncrypted -Passkey $password
+        }
+    }
 }
 
+function Get-MenuAction {
+
+    write-host "`nWindows Autopilot Import / Check Tool $($version)`n" -ForegroundColor Green
+    write-host "Device Info: `n" -ForegroundColor Yellow
+    write-host "    Machine Manufacturer:   " -NoNewline -ForegroundColor Yellow
+    write-host "$Manufacturer"
+    write-host "    Machine Model:          " -NoNewline -ForegroundColor Yellow
+    write-host "$model"
+    write-host "    Machine SerialNumber:   " -NoNewline -ForegroundColor Yellow
+    write-host "$SerialNumber"
+    write-host "    Intune DeviceID:        " -NoNewline -ForegroundColor Yellow
+    write-host "$IntuneDeviceID`n"
+    write-host "    Azure Key Decrypted:    " -NoNewline -ForegroundColor Yellow
+    if ($global:azurekey) {           
+        write-host "Yes`n" -ForegroundColor Green
+    } else {
+        write-host "No`n"
+    }
+    write-host "1." -ForegroundColor Yellow -NoNewline
+    write-host " Add Device to AutoPilot" 
+    write-host "2." -ForegroundColor Yellow -NoNewline
+    write-host " Check Device in Autopilot"
+    write-host "3." -ForegroundColor Yellow -NoNewline
+    write-host " Update Group Tag"
+    write-host "4." -ForegroundColor Yellow -NoNewline
+    write-host " Show Local Autopilot Info"
+    write-host "5." -ForegroundColor Yellow -NoNewline
+    write-host " Exit"
+    $action = read-host -Prompt "Choose Action (1 - 5)"
+
+    return $action
+}
+
+$action = Get-MenuAction
+
+$action
 switch ($action) {
-    "2" {  #check device
+   { @("2", "check") -contains $_ } {  #check device
+        get-AzureKey
         $body = @{
             action              = "CheckDevice"
             SerialNumber        = $SerialNumber
@@ -107,7 +135,7 @@ switch ($action) {
             IntuneDeviceHWhash  = $IntuneDeviceHWhash
             NewGroupTag         = $groupTag
         }
-        $Result = Invoke-RestMethod -Uri "$($azureurl)?code=$($azurekey)" -Method Post -Body ($body | convertto-json) -ContentType 'application/json'
+        $Result = Invoke-RestMethod -Uri "$($azureurl)?code=$($Global:azurekey)" -Method Post -Body ($body | convertto-json) -ContentType 'application/json'
 
         if ($result.Status -ne "DeviceNotFound") {
             $result
@@ -117,6 +145,7 @@ switch ($action) {
             
     }
     "3" {
+        get-AzureKey
         $grouptag = read-host -prompt "Enter new GroupTag: "
         $body = @{
             action              = "UpdateGroupTag" 
@@ -126,7 +155,7 @@ switch ($action) {
             IntuneDeviceHWhash  = $IntuneDeviceHWhash
             NewGroupTag         = $groupTag
         }
-        $Result = Invoke-RestMethod -Uri "$($azureurl)?code=$($azurekey)" -Method Post -Body ($body | convertto-json) -ContentType 'application/json'
+        $Result = Invoke-RestMethod -Uri "$($azureurl)?code=$($Global:azurekey)" -Method Post -Body ($body | convertto-json) -ContentType 'application/json'
         
         if ($result.Status -ne "DeviceNotFound") {
             $result
@@ -136,7 +165,7 @@ switch ($action) {
     }
     
     "1" {
-
+        get-AzureKey
         $body = @{
             action              = "RegisterDevice" 
             SerialNumber        = $SerialNumber
@@ -145,9 +174,33 @@ switch ($action) {
             IntuneDeviceHWhash  = $IntuneDeviceHWhash
             NewGroupTag         = $groupTag
         }
-        $Result = Invoke-RestMethod -Uri "$($azureurl)?code=$($azurekey)" -Method Post -Body ($body | convertto-json) -ContentType 'application/json'
+        $Result = Invoke-RestMethod -Uri "$($azureurl)?code=$($Global:azurekey)" -Method Post -Body ($body | convertto-json) -ContentType 'application/json'
         $result
 
+    }
+
+    "4" {
+        try {
+            $LocalAutopilotPolicy = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Provisioning\AutopilotPolicyCache" -Name "PolicyJsonCache" | Select-Object -ExpandProperty PolicyJsonCache -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue
+        } catch {}
+        $AutopilotInfo = @()
+        Write-Host "`nLocal Autopilot Info:" -ForegroundColor Yellow
+        if ($LocalAutopilotPolicy) {
+            $LocalAutopilotPolicy | fl
+        } else {
+            write-host "`nNo Local Policy Found!" -ForegroundColor red
+        }
+        
+        try {
+            $AutopilotDiag = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Provisioning\Diagnostics\Autopilot"  | Select-Object -Property CloudAssignedLanguage, CloudAssignedRegion -ErrorAction SilentlyContinue 
+        } catch {}
+        Write-Host "`nLocal Autopilot Diag:" -ForegroundColor Yellow
+        if ($AutopilotDiag) {
+            $AutopilotDiag  | fl
+            
+        } else {
+            write-host "`nNo Autopilot Diag!" -ForegroundColor red
+        }
     }
 
     default {
