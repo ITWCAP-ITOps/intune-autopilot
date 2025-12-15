@@ -35,7 +35,7 @@ param (
     [Parameter(Mandatory = $false)][string]$Manufacturer
 )
 
-[version]$version = 1.3
+[version]$version = 1.6
 
 
 # Azure Config
@@ -113,8 +113,10 @@ function Get-MenuAction {
     write-host "3." -ForegroundColor Yellow -NoNewline
     write-host " Update Group Tag"
     write-host "4." -ForegroundColor Yellow -NoNewline
-    write-host " Show Local Autopilot Info"
+    write-host " Show Local Autopilot Policy"
     write-host "5." -ForegroundColor Yellow -NoNewline
+    write-host " Show Autopilot Donwload ZTD File"
+    write-host "6." -ForegroundColor Yellow -NoNewline
     write-host " Exit"
     $action = read-host -Prompt "Choose Action (1 - 5)"
 
@@ -200,6 +202,18 @@ switch ($action) {
             
         } else {
             write-host "`nNo Autopilot Diag!" -ForegroundColor red
+        }
+    }
+
+    "5" {
+        try {
+            $AutopilotDDSZTDFile = Get-Content "C:\Windows\ServiceState\wmansvc\AutopilotDDSZTDFile.json" -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue
+        } catch {}
+        Write-Host "` Autopilot Policy Downloaded:" -ForegroundColor Yellow
+        if ($AutopilotDDSZTDFile) {
+            $AutopilotDDSZTDFile | fl
+        } else {
+            write-host "`nNo Policy File Found!" -ForegroundColor red
         }
     }
 
