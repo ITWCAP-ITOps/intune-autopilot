@@ -70,8 +70,6 @@ function ConvertFrom-SecurePhrase {
     $PrivateKey = $BytesKey
     $UnSecurePhrase = [System.Net.NetworkCredential]::new("", $($string | ConvertTo-SecureString -key $PrivateKey -ErrorAction SilentlyContinue)).Password
 
-    write-host $UnSecurePhrase
-
     if ([string]::IsNullOrEmpty($UnSecurePhrase)) {
         throw {"Decryption Failed!"}
     }
